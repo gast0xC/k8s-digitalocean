@@ -12,6 +12,17 @@ terraform {
       source  = "hashicorp/helm"
       version = "3.1.1"
     }
+    # Used to wait for cert-manager CRDs to register before creating ClusterIssuer
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.12"
+    }
+    # Unlike kubernetes_manifest, kubectl_manifest does NOT validate CRDs at plan time.
+    # This lets us create the ClusterIssuer after cert-manager installs its CRDs.
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = "~> 1.14"
+    }
   }
 
   backend "pg" {}
@@ -34,4 +45,13 @@ provider "helm" {
     token                  = module.cluster.cluster_data.token
     cluster_ca_certificate = module.cluster.cluster_data.cluster_ca_certificate
   }
+}
+
+provider "time" {}
+
+provider "kubectl" {
+  host                   = module.cluster.cluster_data.host
+  token                  = module.cluster.cluster_data.token
+  cluster_ca_certificate = module.cluster.cluster_data.cluster_ca_certificate
+  load_config_file       = false
 }
