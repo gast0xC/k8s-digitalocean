@@ -1,0 +1,13 @@
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+*.tfvars
+*.tfvars.json
+
+# Claude
+.claude/
+
+# Misc
+graph.png
