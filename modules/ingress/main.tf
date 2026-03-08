@@ -1,60 +1,55 @@
 terraform {
   required_providers {
-    kubernetes = {
-      source = "hashicorp/kubernetes"
-      version = "3.0.1"
-    }
-    helm = {
-      source = "hashicorp/helm"
-      version = "3.1.1"
-    }
     digitalocean = {
-      source  = "digitalocean/digitalocean"
-      version = "~> 2.0"
+      source = "digitalocean/digitalocean"
     }
   }
 }
 
-resource "helm_release" "ingres-nginx" {
-    repository = "https://kubernetes.github.io/ingress-nginx"
-    chart = "ingress-nginx"
-    name = "ingress-nginx"
-    namespace = "ingress-nginx"
-    create_namespace = true
+# nginx Ingress Controller
+# An Ingress Controller is a reverse proxy that runs inside the cluster and
+# routes external HTTP/HTTPS traffic to the correct internal service.
+#
+# How traffic flows:
+#   Internet → DigitalOcean Load Balancer (public IP)
+#           → nginx ingress controller pod
+#           → correct k8s Service (based on hostname/path rules in Ingress resources)
+#           → your app pods
+#
+# The Load Balancer is automatically provisioned by DigitalOcean when nginx
+# requests a Service of type LoadBalancer.
+resource "helm_release" "ingress_nginx" {
+  repository       = "https://kubernetes.github.io/ingress-nginx"
+  chart            = "ingress-nginx"
+  name             = "ingress-nginx"
+  namespace        = "ingress-nginx"
+  create_namespace = true
 
-    set = [
-        {
-            name  = "controller.ingressClassResource.default"
-            value = "true"
-        }
-    ]
-}
-
-data "kubernetes_service_v1" "ingress-nginx" {
-    metadata {
-        name = "${helm_release.ingres-nginx.name}-controller"
-        namespace = helm_release.ingres-nginx.namespace
+  set = [
+    {
+      # Make nginx the default IngressClass so Ingress resources don't need
+      # to explicitly specify ingressClassName: nginx
+      name  = "controller.ingressClassResource.default"
+      value = "true"
     }
-
-    depends_on = [helm_release.ingres-nginx]
-}
-variable "base_domain" {
-    type = string
-    default = "gast-k8s.me"
+  ]
 }
 
+# Read the nginx Service to get the Load Balancer IP that DigitalOcean assigned.
+# This IP is used to create DNS A records for all our subdomains.
+data "kubernetes_service_v1" "ingress_nginx" {
+  metadata {
+    name      = "${helm_release.ingress_nginx.name}-controller"
+    namespace = helm_release.ingress_nginx.namespace
+  }
 
-variable "sub_domain" {
-    type = string
+  depends_on = [helm_release.ingress_nginx]
 }
 
+# Register the base domain in DigitalOcean DNS.
+# This lets us create DNS records (A, CNAME, etc.) via Terraform.
+# Note: your domain's nameservers must point to DigitalOcean:
+#   ns1.digitalocean.com, ns2.digitalocean.com, ns3.digitalocean.com
 resource "digitalocean_domain" "main" {
-    name = var.base_domain
-}
-
-resource "digitalocean_record" "www" {
-  domain = digitalocean_domain.main.id
-  type   = "A"
-  name   = var.sub_domain
-  value  = data.kubernetes_service_v1.ingress-nginx.status[0].load_balancer[0].ingress[0].ip
+  name = var.base_domain
 }
